@@ -1,7 +1,5 @@
 *! inei_crawl.ado — Crawlear portal INEI para construir/actualizar catalogo
-*! Navega la interfaz AJAX del portal para extraer todas las encuestas,
-*! anios, periodos, modulos y documentacion
-*! version 1.0.0  2026-04-02
+*! version 1.0.2  2026-04-02
 
 program define inei_crawl
     version 14.0
@@ -20,28 +18,34 @@ program define inei_crawl
     di as text "{hline 60}"
     di as text "  URL: https://proyectos.inei.gob.pe/microdatos/"
     di as text "  Delay entre requests: `delay's"
+    di as text "  Destino: `dest'"
     di as text "{hline 60}"
     di as text ""
-
-    * Verificar que curl esta disponible
-    capture shell curl --version > /dev/null 2>&1
-    if _rc != 0 {
-        di as error "Error: curl es requerido para crawlear el portal."
-        di as error "Instale curl: https://curl.se/download.html"
-        exit 601
-    }
 
     * --- Paso 1: Iniciar sesion ---
     di as text "Paso 1: Iniciando sesion con el portal..."
 
-    tempfile cookiefile inithtml
+    * Usar directorios temporales con rutas cortas (sin espacios)
+    local tmpdir "`c(tmpdir)'"
+    local cookiefile "`tmpdir'/inei_cookies.txt"
+    local tmphtml "`tmpdir'/inei_tmp.html"
+
     local base_url "https://proyectos.inei.gob.pe/microdatos"
+    local init_url "`base_url'/Consulta_por_Encuesta.asp?CU=19558"
 
-    shell curl -s -k -L -c "`cookiefile'" -o "`inithtml'" "`base_url'/Consulta_por_Encuesta.asp?CU=19558"
+    quietly ! curl -s -k -L -c "`cookiefile'" -o "`tmphtml'" "`init_url'"
 
-    capture confirm file "`inithtml'"
+    capture confirm file "`tmphtml'"
     if _rc != 0 {
         di as error "Error: no se pudo conectar al portal INEI"
+        di as error "Verifique que curl esta instalado y tiene conexion a internet"
+        exit 601
+    }
+
+    * Verificar que el archivo no esta vacio
+    qui checksum "`tmphtml'"
+    if r(filelen) < 100 {
+        di as error "Error: respuesta vacia del portal INEI"
         exit 601
     }
 
@@ -49,16 +53,30 @@ program define inei_crawl
     di as text "Paso 2: Extrayendo lista de encuestas..."
 
     preserve
-    _inei_parse surveys, file(`inithtml')
+    capture _inei_parse surveys, file("`tmphtml'")
 
-    * Remover primera opcion si es "Seleccionar..."
+    * Verificar que se parsearon encuestas
+    capture confirm variable opt_value
+    if _rc != 0 {
+        di as error "Error: no se pudieron extraer encuestas del portal"
+        di as error "El formato del portal puede haber cambiado"
+        restore
+        exit 601
+    }
+
     qui drop if opt_value == "" | opt_value == "0"
 
     qui count
     local n_surveys = r(N)
+
+    if `n_surveys' == 0 {
+        di as error "Error: no se encontraron encuestas"
+        restore
+        exit 601
+    }
+
     di as text "  Encontradas: `n_surveys' encuestas"
 
-    * Guardar lista de encuestas
     tempfile survey_list
     qui save "`survey_list'"
 
@@ -94,14 +112,13 @@ program define inei_crawl
 
     local total_modules = 0
     local total_docs = 0
+    local delay_ms = round(`delay' * 1000)
 
-    * Iterar cada encuesta
     forvalues s = 1/`n_surveys' {
         qui use "`survey_list'", clear
         local sv = opt_value[`s']
         local sl = opt_label[`s']
 
-        * Filtrar por encuesta si se especifico
         if "`survey'" != "" {
             _inei_cat_resolve_alias `survey'
             local survey_filter "`s(resolved)'"
@@ -115,19 +132,23 @@ program define inei_crawl
         di as text ""
         di as text "  [`s'/`n_surveys'] `sl'"
 
-        * Determinar categoria (para ENAHO split)
         local category "`sl'"
 
         * --- Obtener anios ---
-        tempfile years_html
         _inei_encode "`sv'"
         local sv_encoded "`s(encoded)'"
 
         local post_data "bandera=1&_cmbEncuesta=`sv_encoded'"
-        shell curl -s -k -L -b "`cookiefile'" -c "`cookiefile'" -X POST -d "`post_data'" -H "Content-Type: application/x-www-form-urlencoded" -o "`years_html'" "`base_url'/CambiaEnc.asp"
-        sleep `= round(`delay' * 1000)'
+        quietly ! curl -s -k -L -b "`cookiefile'" -c "`cookiefile'" -X POST -d "`post_data'" -H "Content-Type: application/x-www-form-urlencoded" -o "`tmphtml'" "`base_url'/CambiaEnc.asp"
+        sleep `delay_ms'
 
-        _inei_parse options, file(`years_html')
+        capture _inei_parse options, file("`tmphtml'")
+        capture confirm variable opt_value
+        if _rc != 0 {
+            di as text "    Error obteniendo anios, saltando..."
+            continue
+        }
+
         qui drop if opt_value == "" | opt_value == "0"
 
         qui count
@@ -141,19 +162,16 @@ program define inei_crawl
         tempfile year_list
         qui save "`year_list'"
 
-        * --- Iterar anios ---
         forvalues y = 1/`n_years' {
             qui use "`year_list'", clear
             local yv = opt_value[`y']
             local yl = opt_label[`y']
 
-            * Extraer anio numerico
             local year_num = real("`yv'")
             if `year_num' == . {
                 local year_num = real("`yl'")
             }
 
-            * Filtrar por rango de anios
             if `year_num' != . {
                 if `year_num' < `yearmin' | `year_num' > `yearmax' {
                     continue
@@ -163,17 +181,22 @@ program define inei_crawl
             di as text "    Anio `yl'..." _continue
 
             * --- Obtener periodos ---
-            tempfile periods_html
             _inei_encode "`sv'"
             local sv_enc "`s(encoded)'"
             _inei_encode "`yv'"
             local yv_enc "`s(encoded)'"
 
             local post_data "bandera=1&_cmbEncuesta=`sv_enc'&_cmbAnno=`yv_enc'&_cmbEncuesta0=`sv_enc'"
-            shell curl -s -k -L -b "`cookiefile'" -c "`cookiefile'" -X POST -d "`post_data'" -H "Content-Type: application/x-www-form-urlencoded" -o "`periods_html'" "`base_url'/CambiaAnio.asp"
-            sleep `= round(`delay' * 1000)'
+            quietly ! curl -s -k -L -b "`cookiefile'" -c "`cookiefile'" -X POST -d "`post_data'" -H "Content-Type: application/x-www-form-urlencoded" -o "`tmphtml'" "`base_url'/CambiaAnio.asp"
+            sleep `delay_ms'
 
-            _inei_parse options, file(`periods_html')
+            capture _inei_parse options, file("`tmphtml'")
+            capture confirm variable opt_value
+            if _rc != 0 {
+                di as text " error"
+                continue
+            }
+
             qui drop if opt_value == "" | opt_value == "0"
 
             qui count
@@ -187,7 +210,6 @@ program define inei_crawl
             tempfile period_list
             qui save "`period_list'"
 
-            * --- Iterar periodos ---
             local yr_modules = 0
 
             forvalues p = 1/`n_periods' {
@@ -196,7 +218,6 @@ program define inei_crawl
                 local pl = opt_label[`p']
 
                 * --- Obtener modulos ---
-                tempfile modules_html
                 _inei_encode "`sv'"
                 local sv_e "`s(encoded)'"
                 _inei_encode "`yv'"
@@ -205,16 +226,19 @@ program define inei_crawl
                 local pv_e "`s(encoded)'"
 
                 local post_data "bandera=1&_cmbEncuesta=`sv_e'&_cmbAnno=`yv_e'&_cmbTrimestre=`pv_e'"
-                shell curl -s -k -L -b "`cookiefile'" -c "`cookiefile'" -X POST -d "`post_data'" -H "Content-Type: application/x-www-form-urlencoded" -o "`modules_html'" "`base_url'/cambiaPeriodo.asp"
-                sleep `= round(`delay' * 1000)'
+                quietly ! curl -s -k -L -b "`cookiefile'" -c "`cookiefile'" -X POST -d "`post_data'" -H "Content-Type: application/x-www-form-urlencoded" -o "`tmphtml'" "`base_url'/cambiaPeriodo.asp"
+                sleep `delay_ms'
 
-                _inei_parse modules, file(`modules_html')
+                capture _inei_parse modules, file("`tmphtml'")
+                capture confirm variable module_name
+                if _rc != 0 {
+                    continue
+                }
 
                 qui count
                 local n_mods = r(N)
 
                 if `n_mods' > 0 {
-                    * Agregar metadata
                     qui gen str244 category = "`category'"
                     qui gen str100 survey_value = "`sv'"
                     qui gen str244 survey_label = "`sl'"
@@ -222,12 +246,10 @@ program define inei_crawl
                     qui gen str244 period = "`pl'"
                     qui gen str100 period_value = "`pv'"
 
-                    * Generar module_code desde los codigos de descarga
                     qui gen str100 module_code = ""
-                    qui replace module_code = regexs(2) ///
+                    capture qui replace module_code = regexs(2) ///
                         if regexm(stata_code, "^([0-9]+)-Modulo(.+)$")
 
-                    * Append al catalogo
                     qui append using "`catalog_building'"
                     qui save "`catalog_building'", replace
 
@@ -236,11 +258,14 @@ program define inei_crawl
                 }
 
                 * --- Obtener documentacion ---
-                tempfile docs_html
-                shell curl -s -k -L -b "`cookiefile'" -c "`cookiefile'" -X POST -d "`post_data'" -H "Content-Type: application/x-www-form-urlencoded" -o "`docs_html'" "`base_url'/CambiaPeriodoDoc.asp"
-                sleep `= round(`delay' * 1000)'
+                quietly ! curl -s -k -L -b "`cookiefile'" -c "`cookiefile'" -X POST -d "`post_data'" -H "Content-Type: application/x-www-form-urlencoded" -o "`tmphtml'" "`base_url'/CambiaPeriodoDoc.asp"
+                sleep `delay_ms'
 
-                _inei_parse docs, file(`docs_html')
+                capture _inei_parse docs, file("`tmphtml'")
+                capture confirm variable doc_name
+                if _rc != 0 {
+                    continue
+                }
 
                 qui count
                 local n_docs_found = r(N)
@@ -288,6 +313,10 @@ program define inei_crawl
         save "`dest'/inei_docs.dta", replace
         di as text "  Docs:     `dest'/inei_docs.dta (`total_docs' documentos)"
     }
+
+    * Limpiar archivos temporales
+    capture erase "`cookiefile'"
+    capture erase "`tmphtml'"
 
     di as text ""
     di as text "{hline 60}"
