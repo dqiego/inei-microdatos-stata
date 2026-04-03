@@ -44,6 +44,21 @@ program define inei
     else if "`subcmd'" == "stats" {
         inei_stats `0'
     }
+    else if "`subcmd'" == "use" {
+        inei_use `0'
+    }
+    else if "`subcmd'" == "merge" {
+        inei_merge `0'
+    }
+    else if "`subcmd'" == "append" {
+        inei_append `0'
+    }
+    else if "`subcmd'" == "describe" {
+        inei_describe `0'
+    }
+    else if "`subcmd'" == "cite" {
+        inei_cite `0'
+    }
     else if "`subcmd'" == "help" {
         _inei_help
     }

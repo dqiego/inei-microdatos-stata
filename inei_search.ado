@@ -125,6 +125,12 @@ program define inei_search
         }
     }
 
+    * Hint de uso
+    local first_sv = survey[1]
+    local first_yr = year[1]
+    local first_mc = module_code[1]
+    di as text ""
+    di as text "  {it:Tip: inei use, survey(`survey') year(`first_yr') module(`first_mc') clear}"
     di as text ""
 
     restore
@@ -135,12 +141,12 @@ end
 mata:
 void _inei_show_search_results(real scalar show_n)
 {
-    string scalar vname, vlabel, vsurvey, vmod, prev_survey
+    string scalar vname, vlabel, vsurvey, vmod, vcode, prev_survey
     string scalar remaining, chunk, line
     real scalar i, vyear, line_len, break_pos, j
 
     prev_survey = ""
-    line_len = 66  // 72 - 6 chars de prefix "      "
+    line_len = 66
 
     for (i = 1; i <= show_n; i++) {
         vname   = st_sdata(i, "var_name")
@@ -148,6 +154,7 @@ void _inei_show_search_results(real scalar show_n)
         vsurvey = st_sdata(i, "survey")
         vyear   = st_data(i, "year")
         vmod    = st_sdata(i, "module_name")
+        vcode   = st_sdata(i, "module_code")
 
         if (vsurvey != prev_survey) {
             if (prev_survey != "") printf("\n")
@@ -156,7 +163,7 @@ void _inei_show_search_results(real scalar show_n)
         }
         prev_survey = vsurvey
 
-        printf("    %s (%g) %s\n", vname, vyear, vmod)
+        printf("    %s (%g) [%s] %s\n", vname, vyear, vcode, vmod)
 
         // Word-wrap del label
         remaining = vlabel
