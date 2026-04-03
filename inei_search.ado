@@ -112,7 +112,7 @@ program define inei_search
         * Linea 1: variable + anio + modulo
         di as result "    `vname'" as text " (`vyear') " as text "{it:`vmod'}"
         * Linea 2+: label completo, wrap a ~70 chars
-        _inei_display_wrapped "      " "`vlabel'" 70
+        _inei_display_wrapped "      " "`vlabel'" 100
     }
 
     di as text ""

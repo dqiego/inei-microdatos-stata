@@ -51,7 +51,7 @@ program define inei_track
     di as text ""
     di as text "{bf:Tracking: `variable'}"
     if "`var_label'" != "" {
-        _inei_display_wrapped "  " "`var_label'" 72
+        _inei_display_wrapped "  " "`var_label'" 100
     }
     di as text ""
 
@@ -79,7 +79,8 @@ program define inei_track
         if "`vsurvey'" == "`prev_survey'" & `prev_year' != . {
             local gap = `vyear' - `prev_year'
             if `gap' > 1 {
-                di as text "    {it:... gap `prev_year'-`vyear'}"
+                local gap_yrs = `vyear' - `prev_year' - 1
+                di as text "    {it:(`gap_yrs' anios sin datos: `=`prev_year'+1'-`=`vyear'-1')}"
             }
         }
 
