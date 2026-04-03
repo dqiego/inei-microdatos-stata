@@ -1,6 +1,6 @@
 *! _inei_parse.ado — Parser HTML para respuestas del portal INEI
 *! Extrae <option> elements y filas de tabla con modulos/docs
-*! version 1.0.1  2026-04-02
+*! version 1.0.3  2026-04-02
 
 program define _inei_parse, sclass
     version 14.0
@@ -9,16 +9,16 @@ program define _inei_parse, sclass
     local parse_type "`parse_type'"
 
     if "`parse_type'" == "options" {
-        _inei_parse_options, file(`file') `clear'
+        _inei_parse_options, file("`file'")
     }
     else if "`parse_type'" == "modules" {
-        _inei_parse_modules, file(`file') `clear'
+        _inei_parse_modules, file("`file'")
     }
     else if "`parse_type'" == "docs" {
-        _inei_parse_docs, file(`file') `clear'
+        _inei_parse_docs, file("`file'")
     }
     else if "`parse_type'" == "surveys" {
-        _inei_parse_surveys, file(`file') `clear'
+        _inei_parse_surveys, file("`file'")
     }
     else {
         di as error `"_inei_parse: tipo desconocido '`parse_type''"'
@@ -27,28 +27,27 @@ program define _inei_parse, sclass
 end
 
 program define _inei_parse_options, sclass
-    syntax , FILE(string) [CLEAR]
+    syntax , FILE(string)
     mata: _inei_do_parse_options("`file'")
 end
 
 program define _inei_parse_modules, sclass
-    syntax , FILE(string) [CLEAR]
+    syntax , FILE(string)
     mata: _inei_do_parse_modules("`file'")
 end
 
 program define _inei_parse_docs, sclass
-    syntax , FILE(string) [CLEAR]
+    syntax , FILE(string)
     mata: _inei_do_parse_docs("`file'")
 end
 
 program define _inei_parse_surveys, sclass
-    syntax , FILE(string) [CLEAR]
+    syntax , FILE(string)
     mata: _inei_do_parse_surveys("`file'")
 end
 
 /* =================================================================
    MATA IMPLEMENTATIONS
-   All variable declarations at top of each function (Mata requirement)
    ================================================================= */
 mata:
 
@@ -121,6 +120,10 @@ string scalar _inei_decode_entities(string scalar s)
     return(strtrim(result))
 }
 
+/* -----------------------------------------------------------------
+   Parse all <option> from a chunk of HTML
+   Returns values and labels via Stata dataset
+   ----------------------------------------------------------------- */
 void _inei_do_parse_options(string scalar filepath)
 {
     string scalar content, val, label
@@ -130,6 +133,7 @@ void _inei_do_parse_options(string scalar filepath)
     content = _inei_read_file(filepath)
     if (content == "") return
 
+    // Count options
     n = 0
     pos = 1
     while (1) {
@@ -191,6 +195,181 @@ void _inei_do_parse_options(string scalar filepath)
     st_local("n_options", strofreal(i))
 }
 
+/* -----------------------------------------------------------------
+   Parse ALL survey dropdowns from the INEI main page
+   The portal has 4 dropdowns:
+     cmbEncuesta0  — main selector (1=ENAHO Anterior, 2=ENAHO Actualizada, 3=EPEN, rest=direct)
+     cmbEncuestaA  — ENAHO Anterior sub-surveys
+     cmbEncuestaN  — ENAHO Actualizada sub-surveys
+     cmbEncuesta_EPE — EPEN sub-surveys
+   We merge all of them into a single flat list.
+   ----------------------------------------------------------------- */
+void _inei_do_parse_surveys(string scalar filepath)
+{
+    string scalar content, block, val, label
+    real scalar pos, end_pos, n, i, j, close_pos, end_tag
+    string colvector all_values, all_labels
+    real scalar total
+
+    content = _inei_read_file(filepath)
+    if (content == "") return
+
+    // Allocate generous buffer
+    all_values = J(200, 1, "")
+    all_labels = J(200, 1, "")
+    total = 0
+
+    // --- 1. Parse cmbEncuestaA (ENAHO Anterior sub-surveys) ---
+    pos = strpos(content, "cmbEncuestaA")
+    if (pos > 0) {
+        end_pos = _inei_find_next(content, "</select>", pos)
+        if (end_pos == 0) end_pos = _inei_find_next(content, "</SELECT>", pos)
+        if (end_pos > 0) {
+            block = substr(content, pos, end_pos - pos + 9)
+            total = _inei_extract_options_from_block(block, all_values, all_labels, total)
+        }
+    }
+
+    // --- 2. Parse cmbEncuestaN (ENAHO Actualizada sub-surveys) ---
+    pos = strpos(content, "cmbEncuestaN")
+    if (pos > 0) {
+        end_pos = _inei_find_next(content, "</select>", pos)
+        if (end_pos == 0) end_pos = _inei_find_next(content, "</SELECT>", pos)
+        if (end_pos > 0) {
+            block = substr(content, pos, end_pos - pos + 9)
+            total = _inei_extract_options_from_block(block, all_values, all_labels, total)
+        }
+    }
+
+    // --- 3. Parse cmbEncuesta_EPE (EPEN sub-surveys) ---
+    pos = strpos(content, "cmbEncuesta_EPE")
+    if (pos > 0) {
+        end_pos = _inei_find_next(content, "</select>", pos)
+        if (end_pos == 0) end_pos = _inei_find_next(content, "</SELECT>", pos)
+        if (end_pos > 0) {
+            block = substr(content, pos, end_pos - pos + 9)
+            total = _inei_extract_options_from_block(block, all_values, all_labels, total)
+        }
+    }
+
+    // --- 4. Parse cmbEncuesta0 (main dropdown, skip values 1,2,3) ---
+    pos = strpos(content, "cmbEncuesta0")
+    if (pos > 0) {
+        end_pos = _inei_find_next(content, "</select>", pos)
+        if (end_pos == 0) end_pos = _inei_find_next(content, "</SELECT>", pos)
+        if (end_pos > 0) {
+            block = substr(content, pos, end_pos - pos + 9)
+            // Parse options but skip values "1", "2", "3" (handled above)
+            real scalar opos
+            opos = 1
+            while (1) {
+                opos = _inei_find_next(block, "<option", opos)
+                if (opos == 0) break
+
+                val = _inei_extract_attr(block, opos, "value")
+                val = strtrim(val)
+
+                end_tag = _inei_find_next(block, ">", opos)
+                if (end_tag == 0) break
+
+                close_pos = _inei_find_next(block, "</option>", end_tag)
+                if (close_pos == 0) close_pos = _inei_find_next(block, "</OPTION>", end_tag)
+
+                if (close_pos > 0) {
+                    label = substr(block, end_tag + 1, close_pos - end_tag - 1)
+                    label = strtrim(_inei_strip_tags(label))
+                    label = _inei_decode_entities(label)
+                }
+                else {
+                    label = ""
+                }
+
+                // Skip empty, "1", "2", "3" (ENAHO/EPEN handled separately)
+                if (val != "" & val != "1" & val != "2" & val != "3") {
+                    total++
+                    if (total <= 200) {
+                        all_values[total] = val
+                        all_labels[total] = label
+                    }
+                }
+
+                opos = end_tag + 1
+            }
+        }
+    }
+
+    if (total == 0) {
+        st_local("n_surveys", "0")
+        return
+    }
+
+    // Store in Stata dataset
+    stata("clear")
+    st_addobs(total)
+    (void) st_addvar("str244", "opt_value")
+    (void) st_addvar("str244", "opt_label")
+    for (j = 1; j <= total; j++) {
+        st_sstore(j, 1, all_values[j])
+        st_sstore(j, 2, all_labels[j])
+    }
+
+    st_local("n_surveys", strofreal(total))
+}
+
+/* -----------------------------------------------------------------
+   Helper: extract options from an HTML block, append to arrays
+   ----------------------------------------------------------------- */
+real scalar _inei_extract_options_from_block(
+    string scalar block,
+    string colvector values,
+    string colvector labels,
+    real scalar offset)
+{
+    real scalar pos, end_tag, close_pos, count
+    string scalar val, label
+
+    count = offset
+    pos = 1
+    while (1) {
+        pos = _inei_find_next(block, "<option", pos)
+        if (pos == 0) break
+
+        val = _inei_extract_attr(block, pos, "value")
+        val = strtrim(val)
+
+        end_tag = _inei_find_next(block, ">", pos)
+        if (end_tag == 0) break
+
+        close_pos = _inei_find_next(block, "</option>", end_tag)
+        if (close_pos == 0) close_pos = _inei_find_next(block, "</OPTION>", end_tag)
+
+        if (close_pos > 0) {
+            label = substr(block, end_tag + 1, close_pos - end_tag - 1)
+            label = strtrim(_inei_strip_tags(label))
+            label = _inei_decode_entities(label)
+        }
+        else {
+            label = ""
+        }
+
+        // Skip empty/placeholder values
+        if (val != "" & label != "") {
+            count++
+            if (count <= 200) {
+                values[count] = val
+                labels[count] = label
+            }
+        }
+
+        pos = end_tag + 1
+    }
+
+    return(count)
+}
+
+/* -----------------------------------------------------------------
+   Parse module table rows
+   ----------------------------------------------------------------- */
 void _inei_do_parse_modules(string scalar filepath)
 {
     string scalar content, row
@@ -230,7 +409,6 @@ void _inei_do_parse_modules(string scalar filepath)
         if (row_end == 0) break
 
         row = substr(content, pos, row_end - pos + 5)
-
         cells = _inei_extract_cells(row)
 
         if (length(cells) >= 4) {
@@ -266,6 +444,9 @@ void _inei_do_parse_modules(string scalar filepath)
     st_local("n_modules", strofreal(i))
 }
 
+/* -----------------------------------------------------------------
+   Parse documentation table rows
+   ----------------------------------------------------------------- */
 void _inei_do_parse_docs(string scalar filepath)
 {
     string scalar content, row, zip_path
@@ -303,7 +484,6 @@ void _inei_do_parse_docs(string scalar filepath)
         if (row_end == 0) break
 
         row = substr(content, pos, row_end - pos + 5)
-
         cells = _inei_extract_cells(row)
 
         if (length(cells) >= 2) {
@@ -336,42 +516,9 @@ void _inei_do_parse_docs(string scalar filepath)
     st_local("n_docs", strofreal(i))
 }
 
-void _inei_do_parse_surveys(string scalar filepath)
-{
-    string scalar content, select_html, tmpfile
-    real scalar select_start, select_end, fh
-
-    content = _inei_read_file(filepath)
-    if (content == "") return
-
-    select_start = _inei_find_next(content, "cmbEncuesta", 1)
-    if (select_start == 0) {
-        st_local("n_surveys", "0")
-        return
-    }
-
-    select_start = _inei_find_prev(content, "<select", select_start)
-    if (select_start == 0) select_start = _inei_find_prev(content, "<SELECT", select_start)
-
-    select_end = _inei_find_next(content, "</select>", select_start)
-    if (select_end == 0) select_end = _inei_find_next(content, "</SELECT>", select_start)
-
-    if (select_end == 0) {
-        st_local("n_surveys", "0")
-        return
-    }
-
-    select_html = substr(content, select_start, select_end - select_start + 9)
-
-    tmpfile = st_tempfilename()
-    fh = fopen(tmpfile, "w")
-    fput(fh, select_html)
-    fclose(fh)
-
-    _inei_do_parse_options(tmpfile)
-    unlink(tmpfile)
-}
-
+/* -----------------------------------------------------------------
+   Helpers
+   ----------------------------------------------------------------- */
 real scalar _inei_find_next(string scalar haystack, string scalar needle,
                             real scalar from_pos)
 {
@@ -387,25 +534,6 @@ real scalar _inei_find_next(string scalar haystack, string scalar needle,
     }
     if (result == 0) return(0)
     return(from_pos + result - 1)
-}
-
-real scalar _inei_find_prev(string scalar haystack, string scalar needle,
-                            real scalar before_pos)
-{
-    real scalar result, last, pos
-    string scalar sub
-
-    sub = substr(haystack, 1, before_pos)
-    last = 0
-    pos = 1
-    while (1) {
-        result = strpos(substr(sub, pos, .), strlower(needle))
-        if (result == 0) result = strpos(substr(sub, pos, .), needle)
-        if (result == 0) break
-        last = pos + result - 1
-        pos = last + 1
-    }
-    return(last)
 }
 
 string scalar _inei_extract_attr(string scalar content, real scalar tag_pos,
