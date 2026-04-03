@@ -1,0 +1,10 @@
+v 3
+d inei - Acceso a microdatos del INEI (Peru)
+d Paquete Stata para descargar, buscar y gestionar microdatos
+d del Instituto Nacional de Estadistica e Informatica de Peru.
+d
+d Basado en inei-microdatos (Python) de fiorellarmartins.
+d
+d Distribution-Date: 20260402
+d
+p inei

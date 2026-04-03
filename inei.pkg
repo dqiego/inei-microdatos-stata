@@ -1,0 +1,32 @@
+v 3
+d inei: Acceso a microdatos del INEI (Peru)
+d
+d Paquete Stata para descargar, buscar y gestionar microdatos
+d del Instituto Nacional de Estadistica e Informatica de Peru.
+d Cubre 67 encuestas (ENAHO, ENDES, EPEN, CENAGRO, etc.) desde
+d 1994 hasta 2025, con 5,900+ modulos y 525,000+ variables.
+d
+d Requiere: Stata 14+, curl
+d
+d Basado en inei-microdatos (Python) de fiorellarmartins
+d https://github.com/fiorellarmartins/inei-microdatos
+d
+d Distribution-Date: 20260402
+d
+f inei.ado
+f inei.sthlp
+f inei_list.ado
+f inei_download.ado
+f inei_docs.ado
+f inei_search.ado
+f inei_track.ado
+f inei_crawl.ado
+f inei_aliases.ado
+f inei_stats.ado
+f _inei_encode.ado
+f _inei_client.ado
+f _inei_parse.ado
+f _inei_catalog_utils.ado
+f data/inei_catalog.dta
+f data/inei_docs.dta
+f data/inei_variables.dta
