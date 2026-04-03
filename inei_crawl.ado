@@ -1,5 +1,5 @@
 *! inei_crawl.ado — Crawlear portal INEI para construir/actualizar catalogo
-*! version 1.0.6  2026-04-03
+*! version 1.0.7  2026-04-03
 
 program define inei_crawl
     version 14.0
@@ -10,11 +10,11 @@ program define inei_crawl
         _inei_find_data_dir
         local dest "`s(datadir)'"
     }
-
     capture mkdir "`dest'"
 
     local ck "`c(tmpdir)'/inei_ck.txt"
     local th "`c(tmpdir)'/inei_th.html"
+    local bf "`c(tmpdir)'/inei_cmd.bat"
     local base "https://proyectos.inei.gob.pe/microdatos"
 
     capture erase "`ck'"
@@ -27,19 +27,19 @@ program define inei_crawl
     di as text "{hline 60}"
     di as text ""
 
-    * --- Paso 1: Sesion ---
+    * --- Paso 1 ---
     di as text "Paso 1: Iniciando sesion..."
-    _inei_curl, cmd(`"curl -s -k -L -c "`ck'" -o "`th'" "`base'/Consulta_por_Encuesta.asp?CU=19558""')
+    mata: _inei_run_curl("`bf'", "`ck'", "`th'", ///
+        "GET", "`base'/Consulta_por_Encuesta.asp?CU=19558", "")
 
     capture confirm file "`th'"
     if _rc != 0 {
-        di as error "Error: no se pudo conectar al portal INEI"
+        di as error "Error: no se pudo conectar"
         exit 601
     }
 
-    * --- Paso 2: Encuestas ---
+    * --- Paso 2 ---
     di as text "Paso 2: Extrayendo encuestas..."
-
     preserve
     capture _inei_parse surveys, file("`th'")
     capture confirm variable opt_value
@@ -48,19 +48,16 @@ program define inei_crawl
         restore
         exit 601
     }
-
     qui drop if opt_value == "" | opt_value == "0"
     qui count
     local n_surveys = r(N)
     di as text "  `n_surveys' encuestas encontradas"
-
     tempfile survey_list
     qui save "`survey_list'"
 
-    * --- Paso 3: Iterar ---
+    * --- Paso 3 ---
     di as text "Paso 3: Crawleando..."
 
-    * Catalogo vacio
     clear
     gen str244 category = ""
     gen str100 survey_value = ""
@@ -92,9 +89,6 @@ program define inei_crawl
 
     forvalues s = 1/`n_surveys' {
         qui use "`survey_list'", clear
-
-        * Usar scalar para proteger strings con chars especiales
-        scalar __sv = opt_value[`s']
         scalar __sl = opt_label[`s']
         local sl = scalar(__sl)
 
@@ -102,7 +96,7 @@ program define inei_crawl
             _inei_cat_resolve_alias `survey'
             local sf = strlower("`s(resolved)'")
             if strpos(strlower("`sl'"), "`sf'") == 0 {
-                scalar drop __sv __sl
+                scalar drop __sl
                 continue
             }
         }
@@ -110,19 +104,16 @@ program define inei_crawl
         di as text ""
         di as text "  [`s'/`n_surveys'] `sl'"
 
-        * Encode via Mata (lee scalar directamente)
-        mata: _inei_js_escape(st_strscalar("__sv"))
-        local sv_e "${_inei_encoded}"
-        macro drop _inei_encoded
-
-        * GET years
-        _inei_curl, cmd(`"curl -s -k -L -b "`ck'" -c "`ck'" -X POST -d "bandera=1&_cmbEncuesta=`sv_e'" -H "Content-Type: application/x-www-form-urlencoded" -o "`th'" "`base'/CambiaEnc.asp""') delay(`dms')
+        * Encode survey value via Mata y hacer POST
+        mata: _inei_crawl_post("`bf'", "`ck'", "`th'", "`base'", ///
+            "CambiaEnc.asp", "bandera=1&_cmbEncuesta=", `s', "opt_value")
+        sleep `dms'
 
         capture _inei_parse options, file("`th'")
         capture confirm variable opt_value
         if _rc != 0 {
             di as text "    Sin anios"
-            scalar drop __sv __sl
+            scalar drop __sl
             continue
         }
         qui drop if opt_value == "" | opt_value == "0"
@@ -130,42 +121,42 @@ program define inei_crawl
         local ny = r(N)
         if `ny' == 0 {
             di as text "    Sin anios"
-            scalar drop __sv __sl
+            scalar drop __sl
             continue
         }
+
+        * Guardar encoded survey value para reuso
+        local sv_e "${_inei_enc_sv}"
 
         tempfile ylist
         qui save "`ylist'"
 
         forvalues y = 1/`ny' {
             qui use "`ylist'", clear
-            scalar __yv = opt_value[`y']
             scalar __yl = opt_label[`y']
             local yl = scalar(__yl)
+            scalar __yv = opt_value[`y']
             local yn = real(scalar(__yv))
             if `yn' == . local yn = real("`yl'")
             if `yn' != . {
                 if `yn' < `yearmin' | `yn' > `yearmax' {
-                    scalar drop __yv __yl
+                    scalar drop __yl __yv
                     continue
                 }
             }
 
             di as text "    `yl'..." _continue
 
-            * Encode year value
-            mata: _inei_js_escape(st_strscalar("__yv"))
-            local yv_e "${_inei_encoded}"
-            macro drop _inei_encoded
-
-            * GET periods
-            _inei_curl, cmd(`"curl -s -k -L -b "`ck'" -c "`ck'" -X POST -d "bandera=1&_cmbEncuesta=`sv_e'&_cmbAnno=`yv_e'&_cmbEncuesta0=`sv_e'" -H "Content-Type: application/x-www-form-urlencoded" -o "`th'" "`base'/CambiaAnio.asp""') delay(`dms')
+            * Encode year y hacer POST para periodos
+            mata: _inei_crawl_post2("`bf'", "`ck'", "`th'", "`base'", ///
+                "CambiaAnio.asp", "`sv_e'", `y', "opt_value")
+            sleep `dms'
 
             capture _inei_parse options, file("`th'")
             capture confirm variable opt_value
             if _rc != 0 {
                 di as text " sin periodos"
-                scalar drop __yv __yl
+                scalar drop __yl __yv
                 continue
             }
             qui drop if opt_value == "" | opt_value == "0"
@@ -173,29 +164,26 @@ program define inei_crawl
             local np = r(N)
             if `np' == 0 {
                 di as text " sin periodos"
-                scalar drop __yv __yl
+                scalar drop __yl __yv
                 continue
             }
 
+            local yv_e "${_inei_enc_yv}"
             tempfile plist
             qui save "`plist'"
             local ym = 0
 
             forvalues p = 1/`np' {
                 qui use "`plist'", clear
-                scalar __pv = opt_value[`p']
+
+                * Encode period y hacer POST para modulos
+                mata: _inei_crawl_post3("`bf'", "`ck'", "`th'", "`base'", ///
+                    "cambiaPeriodo.asp", "`sv_e'", "`yv_e'", `p', "opt_value")
+                sleep `dms'
+
+                local pv_e "${_inei_enc_pv}"
                 scalar __pl = opt_label[`p']
                 local pl = scalar(__pl)
-
-                * Encode period value
-                mata: _inei_js_escape(st_strscalar("__pv"))
-                local pv_e "${_inei_encoded}"
-                macro drop _inei_encoded
-
-                local pd "bandera=1&_cmbEncuesta=`sv_e'&_cmbAnno=`yv_e'&_cmbTrimestre=`pv_e'"
-
-                * GET modules
-                _inei_curl, cmd(`"curl -s -k -L -b "`ck'" -c "`ck'" -X POST -d "`pd'" -H "Content-Type: application/x-www-form-urlencoded" -o "`th'" "`base'/cambiaPeriodo.asp""') delay(`dms')
 
                 capture _inei_parse modules, file("`th'")
                 capture confirm variable module_name
@@ -204,12 +192,11 @@ program define inei_crawl
                     local nm = r(N)
                     if `nm' > 0 {
                         qui gen str244 category = "`sl'"
-                        scalar __svstr = scalar(__sv)
-                        qui gen str100 survey_value = scalar(__svstr)
+                        qui gen str100 survey_value = ""
                         qui gen str244 survey_label = "`sl'"
                         qui gen int year = `yn'
                         qui gen str244 period = "`pl'"
-                        qui gen str100 period_value = scalar(__pv)
+                        qui gen str100 period_value = ""
                         qui gen str100 module_code = ""
                         capture qui replace module_code = regexs(2) ///
                             if regexm(stata_code, "^([0-9]+)-Modulo(.+)$")
@@ -217,12 +204,13 @@ program define inei_crawl
                         qui save "`cat_build'", replace
                         local ym = `ym' + `nm'
                         local total_mod = `total_mod' + `nm'
-                        scalar drop __svstr
                     }
                 }
 
                 * GET docs
-                _inei_curl, cmd(`"curl -s -k -L -b "`ck'" -c "`ck'" -X POST -d "`pd'" -H "Content-Type: application/x-www-form-urlencoded" -o "`th'" "`base'/CambiaPeriodoDoc.asp""') delay(`dms')
+                mata: _inei_crawl_post3("`bf'", "`ck'", "`th'", "`base'", ///
+                    "CambiaPeriodoDoc.asp", "`sv_e'", "`yv_e'", `p', "opt_value")
+                sleep `dms'
 
                 capture _inei_parse docs, file("`th'")
                 capture confirm variable doc_name
@@ -231,7 +219,7 @@ program define inei_crawl
                     local nd = r(N)
                     if `nd' > 0 {
                         qui gen str244 category = "`sl'"
-                        qui gen str100 survey_value = scalar(__sv)
+                        qui gen str100 survey_value = ""
                         qui gen int year = `yn'
                         qui gen str244 period = "`pl'"
                         qui append using "`doc_build'"
@@ -240,24 +228,24 @@ program define inei_crawl
                     }
                 }
 
-                scalar drop __pv __pl
+                scalar drop __pl
             }
 
             di as text " `ym' modulos"
-            scalar drop __yv __yl
+            scalar drop __yl __yv
         }
 
-        scalar drop __sv __sl
+        scalar drop __sl
     }
 
-    * --- Paso 4: Guardar ---
+    * --- Paso 4 ---
     di as text ""
     di as text "Paso 4: Guardando..."
 
     qui use "`cat_build'", clear
     qui count
     if r(N) > 0 {
-        qui drop if category == "" & survey_value == ""
+        qui drop if category == "" & module_name == ""
         compress
         sort category year period module_name
         save "`dest'/inei_catalog.dta", replace
@@ -270,7 +258,7 @@ program define inei_crawl
     qui use "`doc_build'", clear
     qui count
     if r(N) > 0 {
-        qui drop if category == "" & survey_value == ""
+        qui drop if category == "" & doc_name == ""
         compress
         sort category year period doc_name
         save "`dest'/inei_docs.dta", replace
@@ -279,6 +267,7 @@ program define inei_crawl
 
     capture erase "`ck'"
     capture erase "`th'"
+    capture erase "`bf'"
 
     di as text ""
     di as text "{hline 60}"
@@ -286,4 +275,144 @@ program define inei_crawl
     di as text "{hline 60}"
 
     restore
+end
+
+* ================================================================
+* MATA: todas las funciones de crawl en un solo bloque
+* ================================================================
+mata:
+
+/* JS-style URL encode para Latin-1 */
+string scalar _inei_crawl_encode(string scalar s)
+{
+    string scalar result, hex
+    real scalar i, n, b1, b2, b3, cp
+
+    result = ""
+    n = strlen(s)
+    i = 1
+
+    while (i <= n) {
+        b1 = ascii(substr(s, i, 1))
+
+        if ((b1 >= 65 & b1 <= 90) | (b1 >= 97 & b1 <= 122) |
+            (b1 >= 48 & b1 <= 57) |
+            b1 == 64 | b1 == 42 | b1 == 95 | b1 == 43 |
+            b1 == 45 | b1 == 46 | b1 == 47) {
+            result = result + substr(s, i, 1)
+            i++
+        }
+        else if (b1 == 32) {
+            result = result + "%20"
+            i++
+        }
+        else if (b1 < 128) {
+            hex = strupper(inbase(16, b1))
+            if (strlen(hex) == 1) hex = "0" + hex
+            result = result + "%" + hex
+            i++
+        }
+        else if (b1 >= 192 & b1 <= 223 & i + 1 <= n) {
+            b2 = ascii(substr(s, i + 1, 1))
+            cp = (b1 - 192) * 64 + (b2 - 128)
+            hex = strupper(inbase(16, cp))
+            if (strlen(hex) == 1) hex = "0" + hex
+            result = result + "%" + hex
+            i = i + 2
+        }
+        else if (b1 >= 224 & b1 <= 239 & i + 2 <= n) {
+            b2 = ascii(substr(s, i + 1, 1))
+            b3 = ascii(substr(s, i + 2, 1))
+            cp = (b1 - 224) * 4096 + (b2 - 128) * 64 + (b3 - 128)
+            hex = strupper(inbase(16, cp))
+            if (strlen(hex) == 1) hex = "0" + hex
+            result = result + "%" + hex
+            i = i + 3
+        }
+        else {
+            hex = strupper(inbase(16, b1))
+            if (strlen(hex) == 1) hex = "0" + hex
+            result = result + "%" + hex
+            i++
+        }
+    }
+    return(result)
+}
+
+/* Write bat file and execute curl */
+void _inei_run_curl(string scalar bf, string scalar ck, string scalar th,
+    string scalar method, string scalar url, string scalar postdata)
+{
+    real scalar fh
+
+    fh = fopen(bf, "w")
+    fput(fh, "@echo off")
+    if (method == "GET") {
+        fput(fh, `"curl -s -k -L -c ""' + ck + `"" -o ""' + th + `"" ""' + url + `"""')
+    }
+    else {
+        fput(fh, `"curl -s -k -L -b ""' + ck + `"" -c ""' + ck + `"" -X POST -d ""' + postdata + `"" -H "Content-Type: application/x-www-form-urlencoded" -o ""' + th + `"" ""' + url + `"""')
+    }
+    fclose(fh)
+
+    stata(`"quietly ! cmd.exe /c ""' + bf + `"""')
+}
+
+/* POST with encoded survey value from obs */
+void _inei_crawl_post(string scalar bf, string scalar ck, string scalar th,
+    string scalar base, string scalar endpoint,
+    string scalar param_prefix,
+    real scalar obs, string scalar varname)
+{
+    string scalar val, encoded, postdata, url
+
+    val = st_sdata(obs, varname)
+    encoded = _inei_crawl_encode(val)
+
+    st_global("_inei_enc_sv", encoded)
+
+    postdata = param_prefix + encoded
+    url = base + "/" + endpoint
+
+    _inei_run_curl(bf, ck, th, "POST", url, postdata)
+}
+
+/* POST for periods (needs encoded survey + year) */
+void _inei_crawl_post2(string scalar bf, string scalar ck, string scalar th,
+    string scalar base, string scalar endpoint,
+    string scalar sv_enc,
+    real scalar obs, string scalar varname)
+{
+    string scalar val, encoded, postdata, url
+
+    val = st_sdata(obs, varname)
+    encoded = _inei_crawl_encode(val)
+
+    st_global("_inei_enc_yv", encoded)
+
+    postdata = "bandera=1&_cmbEncuesta=" + sv_enc + "&_cmbAnno=" + encoded + "&_cmbEncuesta0=" + sv_enc
+    url = base + "/" + endpoint
+
+    _inei_run_curl(bf, ck, th, "POST", url, postdata)
+}
+
+/* POST for modules/docs (needs encoded survey + year + period) */
+void _inei_crawl_post3(string scalar bf, string scalar ck, string scalar th,
+    string scalar base, string scalar endpoint,
+    string scalar sv_enc, string scalar yv_enc,
+    real scalar obs, string scalar varname)
+{
+    string scalar val, encoded, postdata, url
+
+    val = st_sdata(obs, varname)
+    encoded = _inei_crawl_encode(val)
+
+    st_global("_inei_enc_pv", encoded)
+
+    postdata = "bandera=1&_cmbEncuesta=" + sv_enc + "&_cmbAnno=" + yv_enc + "&_cmbTrimestre=" + encoded
+    url = base + "/" + endpoint
+
+    _inei_run_curl(bf, ck, th, "POST", url, postdata)
+}
+
 end
