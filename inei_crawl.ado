@@ -345,6 +345,7 @@ void _inei_run_curl(string scalar bf, string scalar ck, string scalar th,
 {
     real scalar fh
 
+    unlink(bf)
     fh = fopen(bf, "w")
     fput(fh, "@echo off")
     if (method == "GET") {
