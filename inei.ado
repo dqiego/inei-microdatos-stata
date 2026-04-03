@@ -8,7 +8,8 @@ program define inei
     version 14.0
 
     * Extraer subcomando (primer argumento)
-    gettoken subcmd 0 : 0
+    * Parsear con coma: "inei list, survey(x)" -> subcmd="list" rest=", survey(x)"
+    gettoken subcmd 0 : 0, parse(" ,")
 
     if "`subcmd'" == "" {
         _inei_help
@@ -18,7 +19,7 @@ program define inei
     * Convertir a minusculas
     local subcmd = strlower("`subcmd'")
 
-    * Dispatcher
+    * Dispatcher — pasar el resto incluyendo la coma
     if "`subcmd'" == "list" {
         inei_list `0'
     }

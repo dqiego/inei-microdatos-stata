@@ -14,8 +14,13 @@ program define inei_stats
     qui count
     local n_modules = r(N)
 
-    qui levelsof category, local(cats)
+    qui levelsof survey_label, local(cats) clean
     local n_surveys : word count `cats'
+    * levelsof may undercount with spaces in values, use egen instead
+    tempvar stag
+    qui egen `stag' = group(category survey_label)
+    qui summarize `stag'
+    local n_surveys = r(max)
 
     qui summarize year
     local year_min = r(min)
