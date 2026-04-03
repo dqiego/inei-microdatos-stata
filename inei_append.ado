@@ -31,10 +31,20 @@ program define inei_append
     _inei_cat_load
     _inei_cat_filter, survey(`survey') yearmin(`yearmin') yearmax(`yearmax')
 
-    * Filtrar por modulo
+    * Filtrar por modulo (con/sin ceros iniciales + stata_code)
     local mod_lower = strlower("`module'")
+    local mod_nozero = "`mod_lower'"
+    while substr("`mod_nozero'", 1, 1) == "0" & strlen("`mod_nozero'") > 1 {
+        local mod_nozero = substr("`mod_nozero'", 2, .)
+    }
     qui gen __mmatch = strlower(module_code) == "`mod_lower'" | ///
-                       strpos(strlower(module_name), "`mod_lower'") > 0
+                       strlower(module_code) == "`mod_nozero'" | ///
+                       regexm(strlower(stata_code), "modulo0*`mod_nozero'$")
+    capture confirm integer number `module'
+    if _rc != 0 {
+        qui replace __mmatch = 1 if ///
+            strpos(strlower(module_name), "`mod_lower'") > 0
+    }
     qui keep if __mmatch == 1
     qui drop __mmatch
 

@@ -29,10 +29,31 @@ program define inei_use
     _inei_cat_load
     _inei_cat_filter, survey(`survey') yearmin(`year') yearmax(`year')
 
-    * Filtrar por modulo (por codigo o nombre parcial)
+    * Filtrar por modulo
+    * Estrategia: exacto en module_code (con/sin ceros) > match en stata_code > parcial en nombre
     local mod_lower = strlower("`module'")
-    qui gen __modmatch = strlower(module_code) == "`mod_lower'" | ///
-                         strpos(strlower(module_name), "`mod_lower'") > 0
+
+    * Intentar match exacto en module_code (ej: "34" == "34")
+    qui gen __modmatch = strlower(module_code) == "`mod_lower'"
+
+    * Match sin ceros iniciales (ej: "01" matches "1")
+    local mod_nozero = "`mod_lower'"
+    while substr("`mod_nozero'", 1, 1) == "0" & strlen("`mod_nozero'") > 1 {
+        local mod_nozero = substr("`mod_nozero'", 2, .)
+    }
+    qui replace __modmatch = 1 if strlower(module_code) == "`mod_nozero'"
+
+    * Match en stata_code (ej: "01" matches "966-Modulo01")
+    qui replace __modmatch = 1 if regexm(strlower(stata_code), ///
+        "modulo0*`mod_nozero'$")
+
+    * Solo usar match parcial en nombre si el query NO es numerico
+    capture confirm integer number `module'
+    if _rc != 0 {
+        qui replace __modmatch = 1 if ///
+            strpos(strlower(module_name), "`mod_lower'") > 0
+    }
+
     qui keep if __modmatch == 1
     qui drop __modmatch
 
@@ -48,24 +69,35 @@ program define inei_use
         exit 111
     }
 
-    * Si hay multiples matches, mostrar opciones
+    * Si hay multiples matches, intentar reducir
     if `n_match' > 1 {
-        di as text ""
-        di as text "Se encontraron `n_match' modulos que coinciden con '`module'':"
-        di as text ""
-        forvalues i = 1/`n_match' {
-            scalar __mn = module_name[`i']
-            scalar __mc = module_code[`i']
-            scalar __sc = stata_code[`i']
-            local cat = category[`i']
-            di as text "  " as result scalar(__mc) as text "  " ///
-                scalar(__mn) as text " (`cat')"
-            scalar drop __mn __mc __sc
+        * Preferir periodo "Anual" si existe
+        qui gen __anual = strpos(strlower(period), "anual") > 0
+        qui summarize __anual
+        if r(max) == 1 {
+            qui keep if __anual == 1
         }
-        di as text ""
-        di as text "Especifique el codigo exacto, ej: {bf:inei use, survey(`survey') year(`year') module(01)}"
-        restore
-        exit 111
+        qui drop __anual
+        qui count
+        local n_match = r(N)
+    }
+
+    * Si sigue habiendo multiples, preferir ENAHO Actualizada sobre Anterior
+    if `n_match' > 1 {
+        qui gen __actual = strpos(strlower(category), "actualizada") > 0
+        qui summarize __actual
+        if r(max) == 1 & r(min) == 0 {
+            qui keep if __actual == 1
+        }
+        qui drop __actual
+        qui count
+        local n_match = r(N)
+    }
+
+    * Si TODAVIA hay multiples, tomar el primero
+    if `n_match' > 1 {
+        qui keep in 1
+        local n_match = 1
     }
 
     * Tenemos exactamente 1 match
@@ -181,4 +213,19 @@ program define inei_use
     di as text "  Periodo:   `period'"
     di as text "  Obs:       " as result c(N) as text "  Variables: " as result c(k)
     di as text ""
+end
+
+mata:
+void _inei_show_module_matches(real scalar n)
+{
+    real scalar i
+    string scalar mc, mn, cat
+
+    for (i = 1; i <= n; i++) {
+        mc  = st_sdata(i, "module_code")
+        mn  = st_sdata(i, "module_name")
+        cat = st_sdata(i, "category")
+        printf("  %s  %s (%s)\n", mc, mn, cat)
+    }
+}
 end
