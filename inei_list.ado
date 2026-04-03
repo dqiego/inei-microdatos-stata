@@ -33,13 +33,7 @@ end
    ----------------------------------------------------------------- */
 program define _inei_list_surveys
     * Crear tabla resumen
-    tempvar tag
-    egen `tag' = tag(category), by(category)
-
     * Calcular estadisticas por encuesta
-    tempfile summary
-    preserve
-
     collapse (min) year_min=year (max) year_max=year ///
         (count) n_modules=year, by(category survey_label)
 
