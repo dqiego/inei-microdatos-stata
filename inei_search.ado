@@ -93,11 +93,16 @@ program define inei_search
 
     local prev_survey ""
     forvalues i = 1/`show_n' {
-        local vname   = var_name[`i']
-        local vlabel  = var_label[`i']
-        local vsurvey = survey[`i']
-        local vyear   = year[`i']
-        local vmod    = module_name[`i']
+        scalar __s_vname   = var_name[`i']
+        scalar __s_vlabel  = var_label[`i']
+        scalar __s_vsurvey = survey[`i']
+        scalar __s_vyear   = year[`i']
+        scalar __s_vmod    = module_name[`i']
+
+        local vname   = scalar(__s_vname)
+        local vsurvey = scalar(__s_vsurvey)
+        local vyear   = scalar(__s_vyear)
+        local vmod    = scalar(__s_vmod)
 
         * Separador cuando cambia encuesta
         if "`vsurvey'" != "`prev_survey'" {
@@ -110,10 +115,12 @@ program define inei_search
         local prev_survey "`vsurvey'"
 
         * Linea 1: variable + anio + modulo
-        di as result "    `vname'" as text " (`vyear') " as text "{it:`vmod'}"
-        * Linea 2+: label completo, wrap a ~70 chars
-        global __inei_wrap_text `"`vlabel'"'
+        di as result "    `vname'" as text " (`vyear') `vmod'"
+        * Linea 2+: label completo via scalar
+        global __inei_wrap_text = scalar(__s_vlabel)
         _inei_display_wrapped "      " 72
+
+        scalar drop __s_vname __s_vlabel __s_vsurvey __s_vyear __s_vmod
     }
 
     di as text ""

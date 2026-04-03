@@ -42,7 +42,7 @@ program define inei_track
         exit
     }
 
-    local var_label = var_label[1]
+    scalar __s_vlabel = var_label[1]
 
     qui destring year, replace force
     sort survey year module_name
@@ -50,10 +50,11 @@ program define inei_track
     * --- Mostrar ---
     di as text ""
     di as text "{bf:Tracking: `variable'}"
-    if "`var_label'" != "" {
-        global __inei_wrap_text `"`var_label'"'
+    if scalar(__s_vlabel) != "" {
+        global __inei_wrap_text = scalar(__s_vlabel)
         _inei_display_wrapped "  " 72
     }
+    scalar drop __s_vlabel
     di as text ""
 
     local prev_survey ""
