@@ -72,8 +72,6 @@ program define _inei_list_surveys
     di as text "{hline 80}"
     di as text "Total: " as result _N as text " encuestas"
     di as text ""
-
-    restore
 end
 
 /* -----------------------------------------------------------------
