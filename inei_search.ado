@@ -48,7 +48,8 @@ program define inei_search
     if "`module'" != "" {
         local mod_lower = strlower("`module'")
         qui gen __mmatch = strpos(strlower(module_name), "`mod_lower'") > 0 | ///
-                           strpos(strlower(module_code), "`mod_lower'") > 0
+                           strpos(strlower(module_code), "`mod_lower'") > 0 | ///
+                           regexm(strlower(module_code), "modulo" + "`mod_lower'" + "$")
         qui keep if __mmatch == 1
         qui drop __mmatch
     }
@@ -126,11 +127,32 @@ program define inei_search
     }
 
     * Hint de uso
-    local first_sv = survey[1]
     local first_yr = year[1]
     local first_mc = module_code[1]
+
+    * Extraer codigo de modulo limpio: "966-Modulo05" -> "05"
+    if regexm("`first_mc'", "Modulo(.+)$") {
+        local first_mc = regexs(1)
+    }
+
+    * Usar alias del usuario si lo especifico, o extraer del nombre
+    if "`survey'" != "" {
+        local hint_sv "`survey'"
+    }
+    else {
+        local hint_sv = category[1]
+        * Extraer alias corto del category: "ENAHO Anterior" -> "enaho"
+        local hint_sv = strlower("`hint_sv'")
+        foreach a in enaho endes epen cenagro enapres eea sisfoh {
+            if strpos("`hint_sv'", "`a'") > 0 {
+                local hint_sv "`a'"
+                continue, break
+            }
+        }
+    }
+
     di as text ""
-    di as text "  {it:Tip: inei use, survey(`first_sv') year(`first_yr') module(`first_mc') clear}"
+    di as text "  {it:Tip: inei use, survey(`hint_sv') year(`first_yr') module(`first_mc') clear}"
     di as text ""
 
     restore
@@ -163,6 +185,10 @@ void _inei_show_search_results(real scalar show_n)
         }
         prev_survey = vsurvey
 
+        // Clean module code: "966-Modulo05" -> "05"
+        if (regexm(vcode, "Modulo(.+)$")) {
+            vcode = regexs(1)
+        }
         printf("    %s (%g) [%s] %s\n", vname, vyear, vcode, vmod)
 
         // Word-wrap del label

@@ -23,10 +23,11 @@ program define inei_describe
     qui destring year, replace force
     qui keep if year == `year'
 
-    * Filtrar por modulo
+    * Filtrar por modulo (module_code puede ser "966-Modulo05" o "05")
     local mod_lower = strlower("`module'")
     qui gen __mmatch = strlower(module_code) == "`mod_lower'" | ///
-                       strpos(strlower(module_name), "`mod_lower'") > 0
+                       strpos(strlower(module_name), "`mod_lower'") > 0 | ///
+                       regexm(strlower(module_code), "modulo" + "`mod_lower'" + "$")
     qui keep if __mmatch == 1
     qui drop __mmatch
 

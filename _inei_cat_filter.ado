@@ -11,10 +11,10 @@ program define _inei_cat_filter
         local survey "`s(resolved)'"
 
         local survey_lower = strlower("`survey'")
-        gen __match = strpos(strlower(category), "`survey_lower'") > 0 | ///
+        qui gen __match = strpos(strlower(category), "`survey_lower'") > 0 | ///
                       strpos(strlower(survey_label), "`survey_lower'") > 0
-        keep if __match == 1
-        drop __match
+        qui keep if __match == 1
+        qui drop __match
 
         if _N == 0 {
             di as error "No se encontro encuesta: `survey'"
@@ -23,17 +23,17 @@ program define _inei_cat_filter
     }
 
     if `yearmin' > 0 {
-        keep if year >= `yearmin'
+        qui keep if year >= `yearmin'
     }
     if `yearmax' < 9999 {
-        keep if year <= `yearmax'
+        qui keep if year <= `yearmax'
     }
 
     if "`period'" != "" {
         local period_lower = strlower("`period'")
-        gen __pmatch = strpos(strlower(period), "`period_lower'") > 0
-        keep if __pmatch == 1
-        drop __pmatch
+        qui gen __pmatch = strpos(strlower(period), "`period_lower'") > 0
+        qui keep if __pmatch == 1
+        qui drop __pmatch
     }
 
     if _N == 0 {

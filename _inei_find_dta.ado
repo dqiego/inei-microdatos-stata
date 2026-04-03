@@ -45,11 +45,21 @@ program define _inei_find_dta, sclass
         exit
     }
 
-    * Multiples .dta — mostrar opciones y usar el primero por defecto
+    * Multiples .dta — preferir el de nombre mas corto (archivo principal)
+    local best_i = 1
+    local best_len = strlen("${__inei_dta_1}")
+    forvalues i = 2/`n_dta' {
+        local this_len = strlen("${__inei_dta_`i'}")
+        if `this_len' < `best_len' {
+            local best_i = `i'
+            local best_len = `this_len'
+        }
+    }
+
     di as text ""
     di as text "Se encontraron `n_dta' archivos .dta:"
     forvalues i = 1/`n_dta' {
-        if `i' == 1 {
+        if `i' == `best_i' {
             di as result "  `i'. ${__inei_dta_`i'} (seleccionado)"
         }
         else {
@@ -59,8 +69,8 @@ program define _inei_find_dta, sclass
     di as text ""
     di as text "Use la opcion {bf:file(nombre)} para elegir otro."
 
-    * Devolver el primero por defecto
-    sreturn local dtafile "${__inei_dta_1}"
+    * Devolver el de nombre mas corto
+    sreturn local dtafile "${__inei_dta_`best_i'}"
     sreturn local n_dta "`n_dta'"
     _inei_find_dta_cleanup `n_dta'
 end

@@ -13,8 +13,23 @@ program define _inei_cat_load
     * Si existe .dta, cargar directamente
     capture confirm file "`catalog'"
     if _rc == 0 {
-        use "`catalog'", clear
-        exit
+        * Verificar que no sea un DTA parcial (de un crawl incompleto)
+        * Si el CSV existe y tiene mas datos, re-importar
+        local csv_check = subinstr("`catalog'", ".dta", ".csv", 1)
+        local reimport = 0
+        capture confirm file "`csv_check'"
+        if _rc == 0 {
+            qui use "`catalog'", clear
+            local dta_n = _N
+            if `dta_n' < 500 {
+                * DTA muy pequeno, probablemente de crawl parcial
+                local reimport = 1
+            }
+        }
+        if `reimport' == 0 {
+            qui use "`catalog'", clear
+            exit
+        }
     }
 
     * Si no existe .dta, buscar CSV e importar
