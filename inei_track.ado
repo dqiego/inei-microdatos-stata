@@ -51,7 +51,8 @@ program define inei_track
     di as text ""
     di as text "{bf:Tracking: `variable'}"
     if "`var_label'" != "" {
-        _inei_display_wrapped "  " "`var_label'" 100
+        global __inei_wrap_text `"`var_label'"'
+        _inei_display_wrapped "  " 72
     }
     di as text ""
 
