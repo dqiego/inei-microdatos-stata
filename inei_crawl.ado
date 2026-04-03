@@ -255,8 +255,12 @@ program define inei_crawl
     qui count
     if r(N) > 0 {
         qui drop if category == "" & module_name == ""
+        qui duplicates drop year period module_name stata_code, force
+        qui count
+        local total_mod = r(N)
         compress
         sort category year period module_name
+        char define _dta[crawl_date] "`c(current_date)'"
         save "`dest'/inei_catalog.dta", replace
         di as text "  `dest'/inei_catalog.dta (`total_mod' modulos)"
     }
@@ -268,8 +272,10 @@ program define inei_crawl
     qui count
     if r(N) > 0 {
         qui drop if category == "" & doc_name == ""
+        qui duplicates drop year period doc_name zip_path, force
         compress
         sort category year period doc_name
+        char define _dta[crawl_date] "`c(current_date)'"
         save "`dest'/inei_docs.dta", replace
         di as text "  `dest'/inei_docs.dta (`total_doc' docs)"
     }

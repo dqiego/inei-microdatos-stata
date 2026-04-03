@@ -87,6 +87,30 @@ program define inei_stats
     }
 
     di as text "{hline 45}"
+
+    * Mostrar fecha de crawl si existe
+    _inei_find_data_dir
+    local datadir2 "`s(datadir)'"
+    capture {
+        qui use "`datadir2'/inei_catalog.dta", clear
+        local crawl_date : char _dta[crawl_date]
+    }
+    if "`crawl_date'" != "" {
+        di as text "  Ultima actualizacion: " as result "`crawl_date'"
+
+        * Warning si tiene mas de 90 dias (aproximado)
+        local today_y = year(date("`c(current_date)'", "DMY"))
+        local today_m = month(date("`c(current_date)'", "DMY"))
+        local crawl_y = year(date("`crawl_date'", "DMY"))
+        local crawl_m = month(date("`crawl_date'", "DMY"))
+        local months_diff = (`today_y' - `crawl_y') * 12 + (`today_m' - `crawl_m')
+        if `months_diff' >= 3 {
+            di as text "  {err:Nota: el catalogo tiene mas de 3 meses.}"
+            di as text "  {err:Considere actualizar con: inei crawl}"
+        }
+    }
+
+    di as text "{hline 45}"
     di as text ""
 
     restore

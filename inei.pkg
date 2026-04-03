@@ -11,7 +11,7 @@ d
 d Basado en inei-microdatos (Python) de fiorellarmartins
 d https://github.com/fiorellarmartins/inei-microdatos
 d
-d Distribution-Date: 20260402
+d Distribution-Date: 20260403
 d
 f inei.ado
 f inei.sthlp
@@ -23,6 +23,11 @@ f inei_track.ado
 f inei_crawl.ado
 f inei_aliases.ado
 f inei_stats.ado
+f inei_use.ado
+f inei_merge.ado
+f inei_append.ado
+f inei_describe.ado
+f inei_cite.ado
 f _inei_encode.ado
 f _inei_client.ado
 f _inei_parse.ado
@@ -33,6 +38,9 @@ f _inei_cat_resolve_alias.ado
 f _inei_find_data_dir.ado
 f _inei_load_variables.ado
 f _inei_mkdir_p.ado
+f _inei_unzip.ado
+f _inei_find_dta.ado
+f _inei_merge_keys.ado
 f inei_catalog.csv
 f inei_docs.csv
 f inei_variables.csv

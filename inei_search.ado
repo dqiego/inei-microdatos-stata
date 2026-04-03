@@ -130,7 +130,7 @@ program define inei_search
     local first_yr = year[1]
     local first_mc = module_code[1]
     di as text ""
-    di as text "  {it:Tip: inei use, survey(`survey') year(`first_yr') module(`first_mc') clear}"
+    di as text "  {it:Tip: inei use, survey(`first_sv') year(`first_yr') module(`first_mc') clear}"
     di as text ""
 
     restore
