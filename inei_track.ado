@@ -78,8 +78,32 @@ void _inei_show_track_results()
     n = st_nobs()
     vlabel = st_sdata(1, "var_label")
 
-    // Mostrar label con wrap
-    _inei_do_display_wrap_str(vlabel, "  ", 72)
+    // Word-wrap del label
+    {
+        string scalar remaining, chunk, line
+        real scalar line_len, break_pos, j
+        line_len = 70
+        remaining = vlabel
+        while (strlen(remaining) > 0) {
+            if (strlen(remaining) <= line_len) {
+                printf("  %s\n", remaining)
+                remaining = ""
+            }
+            else {
+                chunk = substr(remaining, 1, line_len)
+                break_pos = line_len
+                for (j = line_len; j >= 1; j--) {
+                    if (substr(chunk, j, 1) == " ") {
+                        break_pos = j
+                        break
+                    }
+                }
+                line = substr(remaining, 1, break_pos)
+                remaining = strtrim(substr(remaining, break_pos + 1, .))
+                printf("  %s\n", line)
+            }
+        }
+    }
     printf("\n")
 
     prev_survey = ""

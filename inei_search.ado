@@ -136,9 +136,11 @@ mata:
 void _inei_show_search_results(real scalar show_n)
 {
     string scalar vname, vlabel, vsurvey, vmod, prev_survey
-    real scalar i, vyear
+    string scalar remaining, chunk, line
+    real scalar i, vyear, line_len, break_pos, j
 
     prev_survey = ""
+    line_len = 66  // 72 - 6 chars de prefix "      "
 
     for (i = 1; i <= show_n; i++) {
         vname   = st_sdata(i, "var_name")
@@ -147,19 +149,36 @@ void _inei_show_search_results(real scalar show_n)
         vyear   = st_data(i, "year")
         vmod    = st_sdata(i, "module_name")
 
-        // Header cuando cambia encuesta
         if (vsurvey != prev_survey) {
             if (prev_survey != "") printf("\n")
             printf("  %s\n", vsurvey)
-            printf("  %s\n", "{hline 70}")
+            printf("  ----------------------------------------------------------------------\n")
         }
         prev_survey = vsurvey
 
-        // Linea 1: variable (anio) modulo
         printf("    %s (%g) %s\n", vname, vyear, vmod)
 
-        // Linea 2+: label con wrap
-        _inei_do_display_wrap_str(vlabel, "      ", 72)
+        // Word-wrap del label
+        remaining = vlabel
+        while (strlen(remaining) > 0) {
+            if (strlen(remaining) <= line_len) {
+                printf("      %s\n", remaining)
+                remaining = ""
+            }
+            else {
+                chunk = substr(remaining, 1, line_len)
+                break_pos = line_len
+                for (j = line_len; j >= 1; j--) {
+                    if (substr(chunk, j, 1) == " ") {
+                        break_pos = j
+                        break
+                    }
+                }
+                line = substr(remaining, 1, break_pos)
+                remaining = strtrim(substr(remaining, break_pos + 1, .))
+                printf("      %s\n", line)
+            }
+        }
     }
 
     printf("\n")
