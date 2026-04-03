@@ -286,10 +286,17 @@ program define inei_crawl
 end
 
 mata:
+/*
+    Encode string for INEI portal (JS escape() style).
+    Handles both Latin-1 and UTF-8 input:
+    - UTF-8 2-byte sequences (0xC2-0xDF + continuation) -> decode to Latin-1 codepoint -> %XX
+    - Single high bytes (Latin-1 direct, e.g. 0xE1 for á) -> %XX
+    - The key insight: check if byte after a high byte is a UTF-8 continuation (0x80-0xBF)
+*/
 string scalar _inei_crawl_encode(string scalar s)
 {
     string scalar result, hex
-    real scalar i, n, b1, b2, b3, cp
+    real scalar i, n, b1, b2, cp
 
     result = ""
     n = strlen(s)
@@ -316,23 +323,28 @@ string scalar _inei_crawl_encode(string scalar s)
             i++
         }
         else if (b1 >= 192 & b1 <= 223 & i + 1 <= n) {
+            // Possible UTF-8 2-byte: check if next is continuation byte
             b2 = ascii(substr(s, i + 1, 1))
-            cp = (b1 - 192) * 64 + (b2 - 128)
-            hex = strupper(inbase(16, cp))
-            if (strlen(hex) == 1) hex = "0" + hex
-            result = result + "%" + hex
-            i = i + 2
-        }
-        else if (b1 >= 224 & b1 <= 239 & i + 2 <= n) {
-            b2 = ascii(substr(s, i + 1, 1))
-            b3 = ascii(substr(s, i + 2, 1))
-            cp = (b1 - 224) * 4096 + (b2 - 128) * 64 + (b3 - 128)
-            hex = strupper(inbase(16, cp))
-            if (strlen(hex) == 1) hex = "0" + hex
-            result = result + "%" + hex
-            i = i + 3
+            if (b2 >= 128 & b2 <= 191) {
+                // Valid UTF-8 2-byte -> decode to codepoint
+                cp = (b1 - 192) * 64 + (b2 - 128)
+                hex = strupper(inbase(16, cp))
+                if (strlen(hex) == 1) hex = "0" + hex
+                result = result + "%" + hex
+                i = i + 2
+            }
+            else {
+                // Not valid UTF-8, treat b1 as Latin-1 byte
+                hex = strupper(inbase(16, b1))
+                if (strlen(hex) == 1) hex = "0" + hex
+                result = result + "%" + hex
+                i++
+            }
         }
         else {
+            // Any other high byte: treat as Latin-1 directly
+            // This handles: Latin-1 bytes like 0xE1 (á), 0xF3 (ó), etc.
+            // Also handles UTF-8 3/4-byte starts when input is actually Latin-1
             hex = strupper(inbase(16, b1))
             if (strlen(hex) == 1) hex = "0" + hex
             result = result + "%" + hex
