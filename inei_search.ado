@@ -5,9 +5,15 @@
 program define inei_search
     version 14.0
     syntax anything(name=query), [SURVEY(string) YEAR(integer 0) ///
+        YEARMIN(integer 0) YEARMAX(integer 9999) ///
         MODULE(string) EXACT LIMIT(integer 50)]
 
-    local query = `query'
+    local query `query'
+
+    * Compatibilidad: yearmin/yearmax como alternativa a year
+    if `year' == 0 & `yearmin' > 0 {
+        local year `yearmin'
+    }
 
     preserve
 
@@ -28,10 +34,16 @@ program define inei_search
         qui drop __smatch
     }
 
-    * Filtrar por anio
+    * Filtrar por anio/rango
+    qui destring year, replace force
     if `year' > 0 {
-        qui destring year, replace force
         qui keep if year == `year'
+    }
+    if `yearmin' > 0 {
+        qui keep if year >= `yearmin'
+    }
+    if `yearmax' < 9999 {
+        qui keep if year <= `yearmax'
     }
 
     * Filtrar por modulo

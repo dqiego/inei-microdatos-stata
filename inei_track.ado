@@ -6,7 +6,7 @@ program define inei_track
     version 14.0
     syntax anything(name=variable), [SURVEY(string)]
 
-    local variable = `variable'
+    local variable `variable'
 
     preserve
 
