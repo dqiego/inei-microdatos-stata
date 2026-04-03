@@ -6,7 +6,7 @@ program define _inei_parse, sclass
     version 14.0
     syntax anything(name=parse_type), FILE(string) [CLEAR]
 
-    local parse_type = `parse_type'
+    local parse_type "`parse_type'"
 
     if "`parse_type'" == "options" {
         _inei_parse_options, file(`file') `clear'

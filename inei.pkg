@@ -27,6 +27,10 @@ f _inei_encode.ado
 f _inei_client.ado
 f _inei_parse.ado
 f _inei_catalog_utils.ado
-f data/inei_catalog.dta
-f data/inei_docs.dta
-f data/inei_variables.dta
+f _inei_find_data_dir.ado
+f _inei_cat_resolve_alias.ado
+f _inei_load_variables.ado
+f _inei_mkdir_p.ado
+f data/inei_catalog.csv
+f data/inei_docs.csv
+f data/inei_variables.csv

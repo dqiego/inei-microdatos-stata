@@ -8,7 +8,7 @@ program define _inei_client, sclass
     syntax anything(name=action), [URL(string) PARAMs(string) ///
         OUTFILE(string) COOKIEFILE(string) DELAY(real 0.2)]
 
-    local action = `action'
+    local action "`action'"
 
     if "`action'" == "init" {
         _inei_client_init, cookiefile(`cookiefile')

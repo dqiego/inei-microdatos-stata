@@ -6,7 +6,7 @@ program define _inei_catalog_utils
     syntax anything(name=action), [SURVEY(string) YEARMIN(integer 0) ///
         YEARMAX(integer 9999) PERIOD(string) CATALOG(string)]
 
-    local action = `action'
+    local action "`action'"
 
     if "`action'" == "load" {
         _inei_cat_load, catalog(`catalog')
