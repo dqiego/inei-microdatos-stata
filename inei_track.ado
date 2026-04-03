@@ -1,6 +1,6 @@
 *! inei_track.ado — Seguir una variable a traves de los anios
 *! Muestra en que anios/modulos aparece una variable especifica
-*! version 1.0.0  2026-04-02
+*! version 1.0.2  2026-04-02
 
 program define inei_track
     version 14.0
@@ -10,10 +10,8 @@ program define inei_track
 
     preserve
 
-    * Cargar indice
     _inei_load_variables
 
-    * Filtrar por encuesta si se especifico
     if "`survey'" != "" {
         _inei_cat_resolve_alias `survey'
         local survey_resolved "`s(resolved)'"
@@ -24,7 +22,7 @@ program define inei_track
         qui drop __smatch
     }
 
-    * Buscar variable (match exacto por nombre, case-insensitive)
+    * Match exacto por nombre
     local var_lower = strlower("`variable'")
     qui gen __vmatch = strlower(var_name) == "`var_lower'"
     qui keep if __vmatch == 1
@@ -35,32 +33,30 @@ program define inei_track
 
     if `n_found' == 0 {
         di as text ""
-        di as text "Variable {bf:`variable'} no encontrada en el indice"
+        di as text "Variable {bf:`variable'} no encontrada en el indice."
         di as text ""
         di as text "Sugerencias:"
-        di as text "  - Verifique el nombre exacto de la variable"
+        di as text "  - Verifique el nombre exacto"
         di as text "  - Use {bf:inei search `variable'} para busqueda parcial"
-        di as text "  - Especifique encuesta: {bf:inei track `variable', survey(enaho)}"
         restore
         exit
     }
 
-    * Obtener label (usar el primero encontrado)
     local var_label = var_label[1]
 
-    * Ordenar por encuesta y anio
     qui destring year, replace force
     sort survey year module_name
 
+    * --- Mostrar ---
     di as text ""
-    di as text "{bf:Tracking de variable: `variable'}"
+    di as text "{bf:Tracking: `variable'}"
     if "`var_label'" != "" {
-        di as text "  Label: `var_label'"
+        if strlen("`var_label'") > 70 {
+            local var_label = substr("`var_label'", 1, 67) + "..."
+        }
+        di as text "  `var_label'"
     }
-    di as text "{hline 75}"
-    di as text %~20s "Encuesta" " " %5s "Anio" " " %~30s "Modulo" " " ///
-        %10s "Codigo"
-    di as text "{hline 75}"
+    di as text ""
 
     local prev_survey ""
     local prev_year = .
@@ -72,36 +68,34 @@ program define inei_track
         local vmod    = module_name[`i']
         local vcode   = module_code[`i']
 
-        * Separador cuando cambia encuesta
-        if "`vsurvey'" != "`prev_survey'" & "`prev_survey'" != "" {
-            di as text "{hline 75}"
+        * Header cuando cambia encuesta
+        if "`vsurvey'" != "`prev_survey'" {
+            if "`prev_survey'" != "" {
+                di as text ""
+            }
+            di as text "  {bf:`vsurvey'}"
+            di as text "  {hline 50}"
+            local prev_year = .
         }
 
-        * Detectar gaps en anios
+        * Detectar gaps
         if "`vsurvey'" == "`prev_survey'" & `prev_year' != . {
             local gap = `vyear' - `prev_year'
             if `gap' > 1 {
-                di as text %~20s "" " " as error %5s "..." " " ///
-                    as text "(gap: `prev_year'-`vyear')"
+                di as text "    {it:... gap `prev_year'-`vyear'}"
             }
         }
 
         local prev_survey "`vsurvey'"
         local prev_year = `vyear'
 
-        * Truncar
-        if strlen("`vsurvey'") > 20 {
-            local vsurvey = substr("`vsurvey'", 1, 17) + "..."
-        }
-        if strlen("`vmod'") > 30 {
-            local vmod = substr("`vmod'", 1, 27) + "..."
+        * Truncar modulo
+        if strlen("`vmod'") > 35 {
+            local vmod = substr("`vmod'", 1, 32) + "..."
         }
 
-        di as result %~20s "`vsurvey'" " " as text %5.0f `vyear' " " ///
-            %~30s "`vmod'" " " %10s "`vcode'"
+        di as result "    `vyear'" as text "  `vmod'" as text "  {it:`vcode'}"
     }
-
-    di as text "{hline 75}"
 
     * Resumen
     qui levelsof survey, local(surveys)
@@ -113,10 +107,10 @@ program define inei_track
     local last_year  : word `n_years' of `years'
 
     di as text ""
-    di as text "{bf:Resumen:}"
-    di as text "  Encuestas:      `n_surveys'"
-    di as text "  Anios:          `n_years' (`first_year' - `last_year')"
-    di as text "  Apariciones:    `n_found'"
+    di as text "{hline 50}"
+    di as text "  Encuestas: " as result "`n_surveys'" ///
+        as text "  |  Anios: " as result "`n_years'" ///
+        as text " (" as result "`first_year'" as text "-" as result "`last_year'" as text ")"
     di as text ""
 
     restore
