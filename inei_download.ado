@@ -2,7 +2,7 @@
 *! Soporta formatos CSV, STATA, SPSS con fallback automatico
 *! version 1.0.0  2026-04-02
 
-program define inei_download
+program define inei_download, rclass
     version 14.0
     syntax , SURVEY(string) [FORMAT(string) DEST(string) ///
         YEARMIN(integer 0) YEARMAX(integer 9999) PERIOD(string) ///
