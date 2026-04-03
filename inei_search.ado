@@ -91,37 +91,8 @@ program define inei_search
 
     local show_n = min(`n_found', `limit')
 
-    local prev_survey ""
-    forvalues i = 1/`show_n' {
-        scalar __s_vname   = var_name[`i']
-        scalar __s_vlabel  = var_label[`i']
-        scalar __s_vsurvey = survey[`i']
-        scalar __s_vyear   = year[`i']
-        scalar __s_vmod    = module_name[`i']
-
-        local vname   = scalar(__s_vname)
-        local vsurvey = scalar(__s_vsurvey)
-        local vyear   = scalar(__s_vyear)
-        local vmod    = scalar(__s_vmod)
-
-        * Separador cuando cambia encuesta
-        if "`vsurvey'" != "`prev_survey'" {
-            if "`prev_survey'" != "" {
-                di as text ""
-            }
-            di as text "  {bf:`vsurvey'}"
-            di as text "  {hline 70}"
-        }
-        local prev_survey "`vsurvey'"
-
-        * Linea 1: variable + anio + modulo
-        di as result "    `vname'" as text " (`vyear') `vmod'"
-        * Linea 2+: label completo via scalar
-        global __inei_wrap_text = scalar(__s_vlabel)
-        _inei_display_wrapped "      " 72
-
-        scalar drop __s_vname __s_vlabel __s_vsurvey __s_vyear __s_vmod
-    }
+    * Mostrar resultados usando Mata (evita problemas con chars especiales)
+    mata: _inei_show_search_results(`show_n')
 
     di as text ""
 
@@ -160,3 +131,37 @@ program define inei_search
 end
 
 /* _inei_load_variables is defined in its own .ado file */
+
+mata:
+void _inei_show_search_results(real scalar show_n)
+{
+    string scalar vname, vlabel, vsurvey, vmod, prev_survey
+    real scalar i, vyear
+
+    prev_survey = ""
+
+    for (i = 1; i <= show_n; i++) {
+        vname   = st_sdata(i, "var_name")
+        vlabel  = st_sdata(i, "var_label")
+        vsurvey = st_sdata(i, "survey")
+        vyear   = st_data(i, "year")
+        vmod    = st_sdata(i, "module_name")
+
+        // Header cuando cambia encuesta
+        if (vsurvey != prev_survey) {
+            if (prev_survey != "") printf("\n")
+            printf("  %s\n", vsurvey)
+            printf("  %s\n", "{hline 70}")
+        }
+        prev_survey = vsurvey
+
+        // Linea 1: variable (anio) modulo
+        printf("    %s (%g) %s\n", vname, vyear, vmod)
+
+        // Linea 2+: label con wrap
+        _inei_do_display_wrap_str(vlabel, "      ", 72)
+    }
+
+    printf("\n")
+}
+end

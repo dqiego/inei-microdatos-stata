@@ -1,74 +1,73 @@
 *! _inei_display_wrapped.ado — Mostrar texto con word-wrap
-*! Usa scalar strings para evitar problemas con caracteres especiales
-*! Uso: global __inei_wrap_text "texto largo aqui"
-*!      _inei_display_wrapped "      " 72
-*! version 1.0.4  2026-04-02
+*! Lee directamente de una variable Stata en la obs especificada
+*! Uso: _inei_display_wrapped varname obs_num prefix maxwidth
+*! version 1.0.5  2026-04-02
 
 program define _inei_display_wrapped
-    args prefix maxwidth
+    args varname obsnum prefix maxwidth
 
     if "`maxwidth'" == "" local maxwidth 72
+    if "`prefix'" == "" local prefix ""
 
-    * Leer texto de la global via scalar (evita problemas con chars especiales)
-    scalar __inei_wtxt = "${__inei_wrap_text}"
-    macro drop __inei_wrap_text
+    mata: _inei_do_display_wrap("`varname'", strtoreal("`obsnum'"), ///
+        "`prefix'", strtoreal("`maxwidth'"))
+end
 
-    if scalar(__inei_wtxt) == "" {
-        scalar drop __inei_wtxt
-        exit
-    }
+* Overload: mostrar un scalar directamente
+program define _inei_display_wrapped_scalar
+    args scalarname prefix maxwidth
 
-    local prefix_len = strlen("`prefix'")
-    local line_len = `maxwidth' - `prefix_len'
-    if `line_len' < 20 local line_len 20
+    if "`maxwidth'" == "" local maxwidth 72
+    if "`prefix'" == "" local prefix ""
 
-    local total_len = strlen(scalar(__inei_wtxt))
+    mata: _inei_do_display_wrap_str(st_strscalar("`scalarname'"), ///
+        "`prefix'", strtoreal("`maxwidth'"))
+end
 
-    if `total_len' <= `line_len' {
-        * Cabe en una linea — mostrar via scalar
-        scalar __inei_wline = "`prefix'" + scalar(__inei_wtxt)
-        di as text scalar(__inei_wline)
-        scalar drop __inei_wtxt __inei_wline
-        exit
-    }
+mata:
+void _inei_do_display_wrap(string scalar varname, real scalar obsnum,
+    string scalar prefix, real scalar maxwidth)
+{
+    string scalar text
 
-    * Word-wrap: partir en lineas
-    local pos = 1
-    while `pos' <= `total_len' {
-        local chars_left = `total_len' - `pos' + 1
+    text = st_sdata(obsnum, varname)
+    _inei_do_display_wrap_str(text, prefix, maxwidth)
+}
 
-        if `chars_left' <= `line_len' {
-            * Ultima linea
-            scalar __inei_wline = "`prefix'" + substr(scalar(__inei_wtxt), `pos', .)
-            di as text scalar(__inei_wline)
-            local pos = `total_len' + 1
+void _inei_do_display_wrap_str(string scalar text, string scalar prefix,
+    real scalar maxwidth)
+{
+    string scalar remaining, chunk, line
+    real scalar line_len, break_pos, i
+
+    if (text == "") return
+
+    line_len = maxwidth - strlen(prefix)
+    if (line_len < 20) line_len = 20
+
+    remaining = text
+
+    while (strlen(remaining) > 0) {
+        if (strlen(remaining) <= line_len) {
+            printf("%s%s\n", prefix, remaining)
+            remaining = ""
         }
         else {
-            * Buscar ultimo espacio dentro del rango
-            local break_pos = `line_len'
-            forvalues j = `line_len'(-1)1 {
-                local ch = substr(scalar(__inei_wtxt), `pos' + `j' - 1, 1)
-                if "`ch'" == " " {
-                    local break_pos = `j'
-                    continue, break
+            chunk = substr(remaining, 1, line_len)
+            break_pos = line_len
+
+            for (i = line_len; i >= 1; i--) {
+                if (substr(chunk, i, 1) == " ") {
+                    break_pos = i
+                    break
                 }
             }
 
-            scalar __inei_wline = "`prefix'" + substr(scalar(__inei_wtxt), `pos', `break_pos')
-            di as text scalar(__inei_wline)
-            local pos = `pos' + `break_pos'
+            line = substr(remaining, 1, break_pos)
+            remaining = strtrim(substr(remaining, break_pos + 1, .))
 
-            * Saltar espacios al inicio de la siguiente linea
-            while `pos' <= `total_len' {
-                local ch = substr(scalar(__inei_wtxt), `pos', 1)
-                if "`ch'" != " " {
-                    continue, break
-                }
-                local pos = `pos' + 1
-            }
+            printf("%s%s\n", prefix, line)
         }
     }
-
-    capture scalar drop __inei_wtxt
-    capture scalar drop __inei_wline
+}
 end

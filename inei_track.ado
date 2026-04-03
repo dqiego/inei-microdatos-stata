@@ -42,60 +42,13 @@ program define inei_track
         exit
     }
 
-    scalar __s_vlabel = var_label[1]
-
     qui destring year, replace force
     sort survey year module_name
 
-    * --- Mostrar ---
+    * --- Mostrar todo via Mata ---
     di as text ""
     di as text "{bf:Tracking: `variable'}"
-    if scalar(__s_vlabel) != "" {
-        global __inei_wrap_text = scalar(__s_vlabel)
-        _inei_display_wrapped "  " 72
-    }
-    scalar drop __s_vlabel
-    di as text ""
-
-    local prev_survey ""
-    local prev_year = .
-
-    local N = _N
-    forvalues i = 1/`N' {
-        local vsurvey = survey[`i']
-        local vyear   = year[`i']
-        local vmod    = module_name[`i']
-        local vcode   = module_code[`i']
-
-        * Header cuando cambia encuesta
-        if "`vsurvey'" != "`prev_survey'" {
-            if "`prev_survey'" != "" {
-                di as text ""
-            }
-            di as text "  {bf:`vsurvey'}"
-            di as text "  {hline 50}"
-            local prev_year = .
-        }
-
-        * Detectar gaps
-        if "`vsurvey'" == "`prev_survey'" & `prev_year' != . {
-            local gap = `vyear' - `prev_year'
-            if `gap' > 1 {
-                local gap_yrs = `vyear' - `prev_year' - 1
-                di as text "    {it:(`gap_yrs' anios sin datos: `=`prev_year'+1'-`=`vyear'-1')}"
-            }
-        }
-
-        local prev_survey "`vsurvey'"
-        local prev_year = `vyear'
-
-        * Truncar modulo
-        if strlen("`vmod'") > 35 {
-            local vmod = substr("`vmod'", 1, 32) + "..."
-        }
-
-        di as result "    `vyear'" as text "  `vmod'" as text "  {it:`vcode'}"
-    }
+    mata: _inei_show_track_results()
 
     * Resumen
     qui levelsof survey, local(surveys)
@@ -114,4 +67,58 @@ program define inei_track
     di as text ""
 
     restore
+end
+
+mata:
+void _inei_show_track_results()
+{
+    string scalar vlabel, vsurvey, vmod, vcode, prev_survey
+    real scalar i, n, vyear, prev_year, gap_yrs
+
+    n = st_nobs()
+    vlabel = st_sdata(1, "var_label")
+
+    // Mostrar label con wrap
+    _inei_do_display_wrap_str(vlabel, "  ", 72)
+    printf("\n")
+
+    prev_survey = ""
+    prev_year = .
+
+    for (i = 1; i <= n; i++) {
+        vsurvey = st_sdata(i, "survey")
+        vyear   = st_data(i, "year")
+        vmod    = st_sdata(i, "module_name")
+        vcode   = st_sdata(i, "module_code")
+
+        // Header cuando cambia encuesta
+        if (vsurvey != prev_survey) {
+            if (prev_survey != "") printf("\n")
+            printf("  %s\n", vsurvey)
+            printf("  %s\n", "--------------------------------------------------")
+            prev_year = .
+        }
+
+        // Detectar gaps
+        if (vsurvey == prev_survey & prev_year != .) {
+            if (vyear - prev_year > 1) {
+                gap_yrs = vyear - prev_year - 1
+                printf("    (%g anios sin datos: %g-%g)\n",
+                    gap_yrs, prev_year + 1, vyear - 1)
+            }
+        }
+
+        prev_survey = vsurvey
+        prev_year = vyear
+
+        // Truncar modulo
+        if (strlen(vmod) > 35) {
+            vmod = substr(vmod, 1, 32) + "..."
+        }
+
+        printf("    %g  %s  %s\n", vyear, vmod, vcode)
+    }
+
+    printf("\n")
+}
 end
