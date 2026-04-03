@@ -33,6 +33,6 @@ f _inei_cat_resolve_alias.ado
 f _inei_find_data_dir.ado
 f _inei_load_variables.ado
 f _inei_mkdir_p.ado
-f data/inei_catalog.csv
-f data/inei_docs.csv
-f data/inei_variables.csv
+f inei_catalog.csv
+f inei_docs.csv
+f inei_variables.csv
