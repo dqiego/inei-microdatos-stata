@@ -1,39 +1,31 @@
 *! _inei_encode.ado — JS-style URL encoding para portal INEI
 *! El portal INEI usa JavaScript escape() encoding, NO percent-encoding UTF-8
-*! Caracteres <= 0xFF → %XX, caracteres > 0xFF → %uXXXX
-*! version 1.0.0  2026-04-02
+*! Caracteres <= 0xFF -> %XX, caracteres > 0xFF -> %uXXXX
+*! version 1.0.2  2026-04-02
 
 program define _inei_encode, sclass
     version 14.0
     syntax anything(name=input_str)
 
-    * Quitar comillas externas si las hay
-    local input_str = `input_str'
+    local input_str `input_str'
 
-    mata: _inei_js_escape(`"`input_str'"')
+    mata: _inei_js_escape(st_local("input_str"))
 
     sreturn local encoded "${_inei_encoded}"
     macro drop _inei_encoded
 end
 
-/*
-    Mata implementation of JavaScript-style escape()
-    - Alphanumeric + @*_+-./ and space → pass through
-    - Characters with codepoint <= 0xFF → %XX
-    - Characters with codepoint > 0xFF → %uXXXX
-*/
 mata:
 void _inei_js_escape(string scalar s)
 {
-    string scalar result, ch, hex
+    string scalar result, hex
     real scalar i, n, cp
 
     result = ""
-    n = ustrlen(s)
+    n = strlen(s)
 
     for (i = 1; i <= n; i++) {
-        ch = usubstr(s, i, 1)
-        cp = ustrtoascii(ch, 1)
+        cp = ascii(substr(s, i, 1))
 
         // Alphanumeric and safe chars pass through
         if ((cp >= 65 & cp <= 90) |   /* A-Z */
@@ -47,19 +39,13 @@ void _inei_js_escape(string scalar s)
             cp == 46 |  /* . */
             cp == 47 |  /* / */
             cp == 32)   /* space */ {
-            result = result + ch
+            result = result + substr(s, i, 1)
         }
         else if (cp <= 255) {
-            // %XX format for chars <= 0xFF
+            // %XX format for byte values
             hex = strupper(inbase(16, cp))
             if (strlen(hex) == 1) hex = "0" + hex
             result = result + "%" + hex
-        }
-        else {
-            // %uXXXX format for chars > 0xFF
-            hex = strupper(inbase(16, cp))
-            while (strlen(hex) < 4) hex = "0" + hex
-            result = result + "%u" + hex
         }
     }
 
