@@ -109,15 +109,10 @@ program define inei_search
         }
         local prev_survey "`vsurvey'"
 
-        * Truncar label
-        if strlen("`vlabel'") > 55 {
-            local vlabel = substr("`vlabel'", 1, 52) + "..."
-        }
-
-        * Linea 1: variable + anio
-        di as result "    `vname'" as text " (`vyear')"
-        * Linea 2: label y modulo
-        di as text "      `vlabel'"
+        * Linea 1: variable + anio + modulo
+        di as result "    `vname'" as text " (`vyear') " as text "{it:`vmod'}"
+        * Linea 2+: label completo, wrap a ~70 chars
+        _inei_display_wrapped "      " "`vlabel'" 70
     }
 
     di as text ""

@@ -52,12 +52,7 @@ program define _inei_list_surveys
         }
         local prev_cat "`cat'"
 
-        * Truncar label
-        if strlen("`lab'") > 45 {
-            local lab = substr("`lab'", 1, 42) + "..."
-        }
-
-        di as text "    `lab'"
+        _inei_display_wrapped "    " "`lab'" 68
         di as text "      " as result "`ymin'" as text "-" ///
             as result "`ymax'" as text "  |  " ///
             as result "`nmod'" as text " modulos"

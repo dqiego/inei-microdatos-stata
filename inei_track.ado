@@ -51,10 +51,7 @@ program define inei_track
     di as text ""
     di as text "{bf:Tracking: `variable'}"
     if "`var_label'" != "" {
-        if strlen("`var_label'") > 70 {
-            local var_label = substr("`var_label'", 1, 67) + "..."
-        }
-        di as text "  `var_label'"
+        _inei_display_wrapped "  " "`var_label'" 72
     }
     di as text ""
 
